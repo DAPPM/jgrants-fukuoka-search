@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jグランツ補助金検索 - AI検索対応</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState } = React;
+    const API_BASE = 'http://localhost:8001/api';
+
+    function SubsidySearchTool() {
+      const [naturalInput, setNaturalInput] = useState('');
+      const [keyword, setKeyword] = useState('');
+      const [results, setResults] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const [searchMode, setSearchMode] = useState('natural'); // 'natural' or 'advanced'
+      const [extractedInfo, setExtractedInfo] = useState(null);
+
+      // 自然言語から検索条件を抽出
+      const extractSearchConditions = (text) => {
+        const conditions = {
+          keywords: [],
+          area: null,
+          industry: null,
+          amount: null
+        };
+
+        // 地域の抽出
+        const areas = ['北海道', '青森', '岩手', '宮城', '秋田', '山形', '福島', '茨城', '栃木', '群馬', '埼玉', '千葉', '東京', '神奈川', '新潟', '富山', '石川', '福井', '山梨', '長野', '岐阜', '静岡', '愛知', '三重', '滋賀', '京都', '大阪', '兵庫', '奈良', '和歌山', '鳥取', '島根', '岡山', '広島', '山口', '徳島', '香川', '愛媛', '高知', '福岡', '佐賀', '長崎', '熊本', '大分', '宮崎', '鹿児島', '沖縄'];
+        for (const area of areas) {
+          if (text.includes(area)) {
+            conditions.area = area;
+            break;
+          }
+        }
+
+        // 業種の抽出
+        const industries = [
+          { keywords: ['製造', 'もの作り', 'ものづくり', '工場'], value: '製造業' },
+          { keywords: ['建設', '建築', '土木'], value: '建設業' },
+          { keywords: ['小売', '販売', '店舗'], value: '小売業' },
+          { keywords: ['飲食', 'レストラン', '飲食店'], value: '飲食業' },
+          { keywords: ['IT', 'システム', 'ソフトウェア', 'Web'], value: '情報通信業' },
+          { keywords: ['農業', '農家', '農作物'], value: '農業' }
+        ];
+        for (const ind of industries) {
+          if (ind.keywords.some(k => text.includes(k))) {
+            conditions.industry = ind.value;
+            break;
+          }
+        }
+
+        // 金額の抽出（百万、千万円など）
+        const amountMatch = text.match(/(\d+)(百万|千万|万)円/);
+        if (amountMatch) {
+          const num = parseInt(amountMatch[1]);
+          const unit = amountMatch[2];
+          if (unit === '百万') conditions.amount = num * 1000000;
+          if (unit === '千万') conditions.amount = num * 10000000;
+          if (unit === '万') conditions.amount = num * 10000;
+        }
+
+        // キーワードの抽出
+        const keywordPatterns = [
+          'DX', 'IT', 'デジタル', 'デジタル化',
+          '設備投資', '設備', '機械',
+          'スタートアップ', '創業', '起業', '開業',
+          '人材育成', '研修', '教育',
+          '事業承継', '後継者', '承継',
+          'ものづくり', '製造',
+          '省エネ', '環境', 'グリーン',
+          '海外展開', '輸出', '海外',
+          '新商品', '新製品', '開発'
+        ];
+
+        for (const pattern of keywordPatterns) {
+          if (text.includes(pattern)) {
+            conditions.keywords.push(pattern);
+          }
+        }
+
+        // キーワードが見つからない場合、全文から重要そうな単語を抽出
+        if (conditions.keywords.length === 0) {
+          const words = text.replace(/[、。！？\s]/g, ' ').split(' ').filter(w => w.length >= 2);
+          conditions.keywords = words.slice(0, 3); // 最初の3つの単語
+        }
+
+        return conditions;
+      };
+
+      const searchWithNaturalLanguage = async () => {
+        if (!naturalInput || naturalInput.trim().length < 2) {
+          setError('内容を入力してください');
+          return;
+        }
+
+        setLoading(true);
+        setError(null);
+
+        try {
+          // 自然言語から条件を抽出
+          const conditions = extractSearchConditions(naturalInput);
+          setExtractedInfo(conditions);
+
+          // 検索キーワードを構築
+          const searchKeyword = conditions.keywords.length > 0 
+            ? conditions.keywords.join(' ')
+            : '事業';
+
+          const params = new URLSearchParams({
+            keyword: searchKeyword,
+            sort: 'acceptance_end_datetime',
+            order: 'ASC',
+            acceptance: '1'
+          });
+
+          if (conditions.industry) {
+            params.append('industry', conditions.industry);
+          }
+          if (conditions.area) {
+            params.append('target_area_search', conditions.area);
+          }
+
+          const response = await fetch(`${API_BASE}/subsidies?${params}`);
+          
+          if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          let filteredResults = data.result || [];
+
+          // 金額でフィルタリング
+          if (conditions.amount) {
+            filteredResults = filteredResults.filter(r => 
+              r.subsidy_max_limit && r.subsidy_max_limit >= conditions.amount
+            );
+          }
+
+          setResults(filteredResults);
+          
+          if (filteredResults.length === 0) {
+            setError('該当する補助金が見つかりませんでした。条件を変えてお試しください。');
+          }
+        } catch (err) {
+          console.error('API Error:', err);
+          setError('検索エラー: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const searchWithKeyword = async () => {
+        if (!keyword || keyword.trim().length < 2) {
+          setError('キーワードは2文字以上入力してください');
+          return;
+        }
+
+        setLoading(true);
+        setError(null);
+        setExtractedInfo(null);
+
+        try {
+          const params = new URLSearchParams({
+            keyword: keyword.trim(),
+            sort: 'acceptance_end_datetime',
+            order: 'ASC',
+            acceptance: '1'
+          });
+
+          const response = await fetch(`${API_BASE}/subsidies?${params}`);
+          
+          if (!response.ok) {
+            throw new Error(`API Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          setResults(data.result || []);
+          
+          if (data.result && data.result.length === 0) {
+            setError('該当する補助金が見つかりませんでした');
+          }
+        } catch (err) {
+          console.error('API Error:', err);
+          setError('プロキシサーバーに接続できません: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const formatAmount = (amount) => {
+        if (!amount) return '上限なし';
+        if (amount >= 10000000) return `${(amount / 10000000).toFixed(0)}千万円`;
+        if (amount >= 10000) return `${(amount / 10000).toFixed(0)}万円`;
+        return `${amount.toLocaleString()}円`;
+      };
+
+      const formatDate = (dateStr) => {
+        if (!dateStr) return '未定';
+        return new Date(dateStr).toLocaleDateString('ja-JP');
+      };
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">Jグランツ補助金検索 🤖</h1>
+              <p className="text-gray-600 mb-6">自然な言葉で補助金を検索できます</p>
+
+              {/* 検索モード切り替え */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setSearchMode('natural')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                    searchMode === 'natural' 
+                      ? 'bg-blue-600 text-white shadow-md' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  💬 会話調で検索
+                </button>
+                <button
+                  onClick={() => setSearchMode('advanced')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                    searchMode === 'advanced' 
+                      ? 'bg-blue-600 text-white shadow-md' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  🔍 キーワード検索
+                </button>
+              </div>
+
+              {/* 自然言語検索 */}
+              {searchMode === 'natural' && (
+                <div>
+                  <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm text-blue-800 mb-2">💡 <strong>検索例：</strong></p>
+                    <ul className="text-sm text-blue-700 space-y-1">
+                      <li>・ 東京で製造業の設備投資をしたい</li>
+                      <li>・ 福岡でスタートアップを始めたい</li>
+                      <li>・ 1000万円以内でIT化を進めたい</li>
+                      <li>・ 大阪で飲食店の事業承継を考えている</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="flex gap-2 mb-4">
+                    <textarea
+                      value={naturalInput}
+                      onChange={(e) => setNaturalInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && searchWithNaturalLanguage()}
+                      placeholder="例：福岡で製造業をやっていて、設備投資したい"
+                      className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 resize-none"
+                      rows="3"
+                    />
+                  </div>
+                  <button
+                    onClick={searchWithNaturalLanguage}
+                    disabled={loading}
+                    className="w-full px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-400 font-bold text-lg shadow-lg"
+                  >
+                    {loading ? '🔍 検索中...' : '🚀 補助金を探す'}
+                  </button>
+                </div>
+              )}
+
+              {/* キーワード検索 */}
+              {searchMode === 'advanced' && (
+                <div className="flex gap-2 mb-4">
+                  <input
+                    type="text"
+                    value={keyword}
+                    onChange={(e) => setKeyword(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && searchWithKeyword()}
+                    placeholder="キーワードを入力（例：DX、設備投資、福岡）"
+                    className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={searchWithKeyword}
+                    disabled={loading}
+                    className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-bold"
+                  >
+                    {loading ? '検索中...' : '検索'}
+                  </button>
+                </div>
+              )}
+
+              {/* 抽出された情報の表示 */}
+              {extractedInfo && (
+                <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <p className="text-sm font-bold text-green-800 mb-2">🎯 検索条件を抽出しました：</p>
+                  <div className="text-sm text-green-700 space-y-1">
+                    {extractedInfo.keywords.length > 0 && (
+                      <p>• キーワード: <strong>{extractedInfo.keywords.join(', ')}</strong></p>
+                    )}
+                    {extractedInfo.area && (
+                      <p>• 地域: <strong>{extractedInfo.area}</strong></p>
+                    )}
+                    {extractedInfo.industry && (
+                      <p>• 業種: <strong>{extractedInfo.industry}</strong></p>
+                    )}
+                    {extractedInfo.amount && (
+                      <p>• 補助上限: <strong>{formatAmount(extractedInfo.amount)}以上</strong></p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-xl font-bold mb-4">
+                検索結果 <span className="text-blue-600">{results.length}</span>件
+              </h2>
+
+              {loading ? (
+                <div className="text-center py-12">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+                  <p className="mt-4 text-gray-600">検索中...</p>
+                </div>
+              ) : results.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <p className="text-lg">検索してください</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {results.map((item) => (
+                    <div key={item.id} className="border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg hover:border-blue-300 transition-all">
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">
+                        {item.title}
+                      </h3>
+                      <p className="text-gray-700 mb-4">{item.detail}</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div className="bg-green-50 px-3 py-2 rounded-lg">
+                          <span className="font-bold text-green-700">上限: </span>
+                          <span className="text-gray-800">{formatAmount(item.subsidy_max_limit)}</span>
+                        </div>
+                        <div className="bg-blue-50 px-3 py-2 rounded-lg">
+                          <span className="font-bold text-blue-700">業種: </span>
+                          <span className="text-gray-800">{item.target_industry || '全業種'}</span>
+                        </div>
+                        <div className="bg-purple-50 px-3 py-2 rounded-lg">
+                          <span className="font-bold text-purple-700">地域: </span>
+                          <span className="text-gray-800">{item.target_area_search || '全国'}</span>
+                        </div>
+                        <div className="bg-orange-50 px-3 py-2 rounded-lg">
+                          <span className="font-bold text-orange-700">締切: </span>
+                          <span className="text-gray-800">{formatDate(item.acceptance_end_datetime)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="text-center mt-8 text-sm text-gray-600">
+            <p>データ提供: <a href="https://www.jgrants-portal.go.jp" target="_blank" className="text-blue-600 hover:underline">Jグランツポータル</a></p>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<SubsidySearchTool />);
+  </script>
+</body>
+</html>
