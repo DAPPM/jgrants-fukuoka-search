@@ -12,7 +12,7 @@
     "inquiry_url": "https://www.pref.fukuoka.lg.jp/",
     "type": "県",
     "source": "福岡県",
-    "scraped_at": "2025-11-12T00:58:33.404193"
+    "scraped_at": "2025-11-13T00:58:36.187702"
   },
   {
     "id": "fukuoka-city-001",
@@ -27,7 +27,7 @@
     "inquiry_url": "https://www.city.fukuoka.lg.jp/",
     "type": "市",
     "source": "福岡市",
-    "scraped_at": "2025-11-12T00:58:33.404201"
+    "scraped_at": "2025-11-13T00:58:36.187708"
   },
   {
     "id": "fukuoka-city-002",
@@ -42,7 +42,7 @@
     "inquiry_url": "https://www.city.fukuoka.lg.jp/",
     "type": "市",
     "source": "福岡市",
-    "scraped_at": "2025-11-12T00:58:33.404203"
+    "scraped_at": "2025-11-13T00:58:36.187709"
   },
   {
     "id": "fukuoka-city-003",
@@ -57,7 +57,7 @@
     "inquiry_url": "https://www.city.fukuoka.lg.jp/",
     "type": "市",
     "source": "福岡市",
-    "scraped_at": "2025-11-12T00:58:33.404204"
+    "scraped_at": "2025-11-13T00:58:36.187711"
   },
   {
     "id": "fukuoka-pref-002",
@@ -72,6 +72,6 @@
     "inquiry_url": "https://www.pref.fukuoka.lg.jp/",
     "type": "県",
     "source": "福岡県",
-    "scraped_at": "2025-11-12T00:58:33.404205"
+    "scraped_at": "2025-11-13T00:58:36.187712"
   }
 ]
